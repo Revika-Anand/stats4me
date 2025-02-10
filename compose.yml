@@ -7,7 +7,7 @@ services:
     container_name: telegraf
     image: telegraf:1.27-alpine
     restart: unless-stopped
-    hostname: ${HOSTNAME}
+    hostname: ${HOSTNAME:-telegraf}
     user: telegraf:${DOCKER_GID}
     networks:
       - stats4me
@@ -46,6 +46,37 @@ services:
       - DOCKER_INFLUXDB_INIT_ORG=${INFLUXDB_ORG}
       - DOCKER_INFLUXDB_INIT_BUCKET=${INFLUXDB_BUCKET}
       - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=${INFLUXDB_TOKEN}
+    
+  loki:
+    container_name: loki
+    image: grafana/loki:2.6.1
+    restart: unless-stopped
+    user: root
+    ports:
+      - "3100"
+    networks:
+      - default
+      - stats4me
+    volumes:
+      # directory must be created first, with uid:gid 10001:10001
+      - loki:/loki
+
+  promtail:
+    container_name: promtail
+    image: grafana/promtail:2.6.1
+    restart: unless-stopped
+    user: root
+    networks:
+      - default
+      - stats4me
+    volumes:
+      # custom config will read logs from the containers of
+      # this project
+      - ./loki/promtail-config.yml:/etc/promtail/config.yml
+      # to read container labels and logs
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/lib/docker/containers:/var/lib/docker/containers
+      - promtail:/var/log
 
   # data visualisation
   grafana:
@@ -60,6 +91,7 @@ services:
       - 3000:3000
     volumes:
       - grafana:/var/lib/grafana/
+      - ./loki/grafana/provisioning/:/etc/grafana/provisioning/
     environment:
       - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource
 
@@ -106,4 +138,18 @@ volumes:
     driver_opts:
       type: none
       device: ./grafana
+      o: bind
+
+  loki:
+    driver: local
+    driver_opts:
+      type: none
+      device: ./loki
+      o: bind
+
+  promtail:
+    driver: local
+    driver_opts:
+      type: none
+      device: ./promtail
       o: bind
